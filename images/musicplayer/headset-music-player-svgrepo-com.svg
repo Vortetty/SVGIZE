@@ -1,0 +1,42 @@
+<?xml version="1.0" ?>
+<!DOCTYPE svg  PUBLIC '-//W3C//DTD SVG 1.1//EN'  'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd'>
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg fill="#000000" width="800px" height="800px" viewBox="0 0 32 32" enable-background="new 0 0 32 32" version="1.1" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="play"/>
+<g id="stop"/>
+<g id="pause"/>
+<g id="replay"/>
+<g id="next"/>
+<g id="Layer_8"/>
+<g id="search"/>
+<g id="list"/>
+<g id="love"/>
+<g id="menu"/>
+<g id="add"/>
+<g id="headset">
+<g>
+<path d="M26.857,18h-2c0-6-3.973-9.857-8.857-9.857S7.143,12,7.143,18h-2c0-7,4.871-11.857,10.857-11.857S26.857,11,26.857,18z"/>
+</g>
+<g>
+<path d="M8,19c0-0.553-0.448-1-1-1H5c-0.552,0-1,0.447-1,1v6c0,0.553,0.448,1,1,1h2c0.552,0,1-0.447,1-1V19z"/>
+<path d="M7,27H5c-1.103,0-2-0.897-2-2v-6c0-1.103,0.897-2,2-2h2c1.103,0,2,0.897,2,2v6C9,26.103,8.103,27,7,27z M5,19v6h2.001    L7,19H5z"/>
+</g>
+<g>
+<path d="M28,19c0-0.553-0.448-1-1-1h-2c-0.552,0-1,0.447-1,1v6c0,0.553,0.448,1,1,1h2c0.552,0,1-0.447,1-1V19z"/>
+<path d="M27,27h-2c-1.103,0-2-0.897-2-2v-6c0-1.103,0.897-2,2-2h2c1.103,0,2,0.897,2,2v6C29,26.103,28.103,27,27,27z M25,19v6    h2.001L27,19H25z"/>
+</g>
+</g>
+<g id="random"/>
+<g id="music"/>
+<g id="setting"/>
+<g id="Layer_17"/>
+<g id="Layer_18"/>
+<g id="Layer_19"/>
+<g id="Layer_20"/>
+<g id="Layer_21"/>
+<g id="Layer_22"/>
+<g id="Layer_23"/>
+<g id="Layer_24"/>
+<g id="Layer_25"/>
+<g id="Layer_26"/>
+</svg>
