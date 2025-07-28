@@ -7,8 +7,18 @@
 
 <sub>The image of the bird is taken by Wintersys/Vortetty, licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).</sub>
 
-The japanese street one is about 9000 iterations and the skyrat one is about 36000 iterations. By no means is this fast but it isn't slow either for what it is and how naive the approach used, each image having been completed in about an hour.
+---
+
+The japanese street one is about 9000 (about 8100 succeeded) iterations and the skyrat one is about 36000 (about 22000 succeeded) iterations. By no means is this fast but it isn't slow either for what it is and how naive the approach used, each image having been completed in about an hour.
 
 All images produced by this program should be considered derivatives of the original as they are transformative in a way that would be arguable in a court as a derivative. Please keep this in mind when using this program.
 
 Requires nasm due to the image library, this is to get as much speed as one can manage to from the program.
+
+rsvg-convert is recommended to convert the svg to a png, inkscape dislikes the generated SVGs. I can also verify they render well in firefox.
+
+---
+
+todo:
+
+-[ ] Consecutive fails allowed setting to prevent going for an accuracy or number of images that is impossible to reach, 100 seems reasonable?

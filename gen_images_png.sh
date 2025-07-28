@@ -6,8 +6,20 @@
 rm -rf images_png
 mkdir -p images_png
 
-find images -type f -name '*.svg' | while read -r svg; do
+# Get list of all SVGs
+mapfile -t svgs < <(find images -type f -name '*.svg')
+total=${#svgs[@]}
+count=0
+
+for svg in "${svgs[@]}"; do
+    ((count++))
     relpath="${svg#images/}"
-    flatname=$(echo "$relpath" | tr '/ ' '__' | sed 's/\.svg$//')
-    inkscape "$svg" --export-type=png --export-filename="images_png/${flatname}.png" -w 512 -h 512
+    outdir="images_png/$(dirname "$relpath")"
+    mkdir -p "$outdir"
+    outfile="${relpath%.svg}.png"
+    
+    percent=$(( count * 100 / total ))
+    printf "%3d%% (%d/%d): %s\n" "$percent" "$count" "$total" "$relpath"
+
+    rsvg-convert "$svg" -w 512 -h 512 -f png > "$outdir/$(basename "$outfile")"
 done
