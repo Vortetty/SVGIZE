@@ -15,7 +15,7 @@ All images produced by this program should be considered derivatives of the orig
 
 Requires nasm due to the image library, this is to get as much speed as one can manage to from the program.
 
-rsvg-convert is recommended to convert the svg to a png, inkscape dislikes the generated SVGs. I can also verify they render well in firefox.
+rsvg-convert is recommended to convert the svg to a png, inkscape dislikes the generated SVGs. I can also verify they render well in firefox. (Also needed anyway for `gen_images_png.sh` which you need to run to get the `images_png` dir)
 
 ---
 

@@ -215,30 +215,51 @@ fn main() {
 
     println!("Image finished!\nSaving... This may take a while");
     let mut output = format!("<svg viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"rgb({}, {}, {})\"/><clipPath id=\"clipView\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/></clipPath><g clip-path=\"url(#clipView)\">", input_image.width(), input_image.height(), avgcolor[0], avgcolor[1], avgcolor[2], input_image.width(), input_image.height());
-    let mut svg_cache: HashMap<PathBuf, Element> = HashMap::new();
-    let fill_regex = Regex::new(r"fill:.+?;").unwrap();
-    let style_regex = Regex::new(r"(?s)<style\b[^>]*>.*?</style>").unwrap();
+    let mut svg_cache: HashMap<PathBuf, String> = HashMap::new();
+    let style_prop_regex = Regex::new(r"(fill|color):.+?;").unwrap();
+    let tag_regex = Regex::new(r"(?s)<(style|metadata)\b[^>]*>.*?</(style|metadata)>").unwrap();
+    let space_regex = Regex::new(r"\s+").unwrap();
     let none = "none".to_string();
     for img in placed {
         if !svg_cache.contains_key(&img.src_svg) {
-            let svg = Element::parse(fs::read_to_string(img.src_svg.clone()).unwrap().as_bytes()).unwrap();
-            svg_cache.insert(img.src_svg.clone(), svg);
+            let mut svg = Element::parse(fs::read_to_string(img.src_svg.clone()).unwrap().as_bytes()).unwrap();
+            svg.name = "symbol".to_string();
+            svg.attributes.insert("id".to_string(), format!("{}", svg_cache.len()));
+            svg.attributes.insert("fill".to_string(), "currentColor".to_string());
+            if svg.attributes.get("stroke").unwrap_or_else(|| &none).to_string() != none { // Some use stroke, we don't like them but have to support it
+                svg.attributes.insert("stroke".to_string(), "currentColor".to_string());
+            } else {
+                svg.attributes.insert("stroke".to_string(), "none".to_string());
+            }
+            let mut buffer = Cursor::new(Vec::new());
+            svg.write(&mut buffer);
+            let svgtext = String::from_utf8(buffer.into_inner()).unwrap();
+            let tmp = style_prop_regex.replace_all(svgtext.as_ref(), "fill:currentColor;".to_string()); // Replace other fills, like style tags
+            let outstr = tag_regex.replace_all(tmp.as_ref(), "")
+                .replace("<?xml version=\"1.0\" encoding=\"UTF-8\"?>", "")
+                .replace("xmlns=\"http://www.w3.org/2000/svg\"", "")
+                .replace("xmlns:xlink=\"http://www.w3.org/1999/xlink\"", ""); // Remove styles unless they are inline
+            let outstr_nospace = space_regex.replace_all(outstr.as_str(), " ");
+            output += "<defs>"; // Defs prevents rendering
+            output += outstr_nospace.as_ref(); // These just cause errors, idk why the xml library includes them by default.
+            output += "</defs>";
+
+            svg_cache.insert(img.src_svg.clone(), format!("{}", svg_cache.len()));
         }
-        let mut svg = svg_cache.get(&img.src_svg).unwrap().clone();
-        svg.attributes.insert("width".to_string(), img.size.to_string());
-        svg.attributes.insert("height".to_string(), img.size.to_string());
-        svg.attributes.insert("x".to_string(), "0".to_string());
-        svg.attributes.insert("y".to_string(), "0".to_string());
-        svg.attributes.insert("fill".to_string(), format!("rgb({},{},{})", img.color[0], img.color[1], img.color[2]));
-        if svg.attributes.get("stroke").unwrap_or_else(|| &none).to_string() != none {
-            svg.attributes.insert("stroke".to_string(), format!("rgb({},{},{})", img.color[0], img.color[1], img.color[2]));
-        }
-        let mut buffer = Cursor::new(Vec::new());
-        svg.write(&mut buffer);
-        let svgtext = String::from_utf8(buffer.into_inner()).unwrap();
-        let tmp = fill_regex.replace_all(svgtext.as_ref(), format!("fill:rgb({},{},{});", img.color[0], img.color[1], img.color[2]));
-        let outstr = style_regex.replace_all(tmp.as_ref(), "");
-        output += format!("<g transform=\"translate({} {}) rotate({} {} {})\">{}</g>", img.center_x as i32 - (img.size as f32/2.0) as i32, img.center_y as i32 - (img.size as f32/2.0) as i32, img.rotation * (180.0/PI), img.size as f32/2.0, img.size as f32/2.0, outstr.as_ref()).replace("<?xml version=\"1.0\" encoding=\"UTF-8\"?>", "").as_str();
+        let svgid = svg_cache.get(&img.src_svg).unwrap();
+        output += format!("<use x=\"0\" y=\"0\" transform=\"translate({} {}) rotate({} {} {})\" width=\"{}\" height=\"{}\" color=\"rgb({},{},{})\" href=\"#{}\" />",
+            img.center_x as i32 - (img.size as f32/2.0) as i32,
+            img.center_y as i32 - (img.size as f32/2.0) as i32,
+            img.rotation * (180.0/PI),
+            img.size as f32/2.0,
+            img.size as f32/2.0,
+            img.size,
+            img.size,
+            img.color[0],
+            img.color[1],
+            img.color[2],
+            svgid
+        ).as_str();
     }
     output += "</g></svg>";
 
