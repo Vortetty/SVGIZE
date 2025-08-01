@@ -1,8 +1,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#![feature(f16)]
 
-use std::{collections::HashMap, f32::consts::PI, fs::{self, File}, io::Cursor, path::{Path, PathBuf}, process::exit, u32};
+use std::{borrow::Cow, collections::HashMap, f32::consts::PI, fs::{self, File}, io::Cursor, path::{Path, PathBuf}, process::exit, u32};
 
 use clap::Parser;
 use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
@@ -20,20 +21,19 @@ struct FragmentImage {
     pub src_svg: PathBuf
 }
 
-struct ImageSetting { // the image pasted on and all the info abt it
-    rotation: f32, // 0.0-2pi
+struct ImageSetting<'a> { // the image pasted on and all the info abt it
+    rotation: f16, // 0.0-2pi
     size: u32, // Pixel width
     color: [u8; 4], // Will substitute all pixels for this but preserve alpha of the original
     center_x: u32,
     center_y: u32,
-    file: PathBuf,
-    src_svg: PathBuf
+    src_svg: Cow<'a, PathBuf>
 }
-struct ImageObj { // The image used
+struct ImageObj<'a> { // The image used
     im: RgbaImage,
     topleft_x_pos: i64,
     topleft_y_pos: i64,
-    settings: ImageSetting
+    settings: ImageSetting<'a>
 }
 
 fn similarity_range(s: &str) -> Result<f64, String> {
@@ -158,13 +158,12 @@ fn main() {
             topleft_x_pos: rand_center_x as i64 - (rand_size_rotated as f32/2.0).floor() as i64,
             topleft_y_pos: rand_center_y as i64 - (rand_size_rotated as f32/2.0).floor() as i64,
             settings: ImageSetting {
-                rotation: rand_rot,
+                rotation: rand_rot as f16,
                 size: rand_size,
                 color: pos_color,
                 center_x: rand_center_x,
                 center_y: rand_center_y,
-                file: images[im_index].file.clone(),
-                src_svg: images[im_index].src_svg.clone()
+                src_svg: Cow::Borrowed(&images[im_index].src_svg)
             }
         }
     };
@@ -217,12 +216,12 @@ fn main() {
     let mut output = format!("<svg viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"rgb({}, {}, {})\"/><clipPath id=\"clipView\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/></clipPath><g clip-path=\"url(#clipView)\">", input_image.width(), input_image.height(), avgcolor[0], avgcolor[1], avgcolor[2], input_image.width(), input_image.height());
     let mut svg_cache: HashMap<PathBuf, String> = HashMap::new();
     let style_prop_regex = Regex::new(r"(fill|color):.+?;").unwrap();
-    let tag_regex = Regex::new(r"(?s)<(style|metadata)\b[^>]*>.*?</(style|metadata)>").unwrap();
+    let tag_regex = Regex::new(r#"(?s)(<(style|metadata)\b[^>]*>.*?</(style|metadata)>|<\s*(metadata|g)\b[^>]*\/\s*>|class\s*=\s*"(.*?)"|xmlns(:\w+)?\s*=\s*"[^"]*"|xmlns(:\w+)?\s*=\s*'[^']*')"#).unwrap(); // All style, metadata, and empty g tags, as well as all class tags and xmlns tags
     let space_regex = Regex::new(r"\s+").unwrap();
     let none = "none".to_string();
     for img in placed {
-        if !svg_cache.contains_key(&img.src_svg) {
-            let mut svg = Element::parse(fs::read_to_string(img.src_svg.clone()).unwrap().as_bytes()).unwrap();
+        if !svg_cache.contains_key(img.src_svg.as_ref()) {
+            let mut svg = Element::parse(fs::read_to_string(img.src_svg.as_ref()).unwrap().as_bytes()).unwrap();
             svg.name = "symbol".to_string();
             svg.attributes.insert("id".to_string(), format!("{}", svg_cache.len()));
             svg.attributes.insert("fill".to_string(), "currentColor".to_string());
@@ -236,21 +235,19 @@ fn main() {
             let svgtext = String::from_utf8(buffer.into_inner()).unwrap();
             let tmp = style_prop_regex.replace_all(svgtext.as_ref(), "fill:currentColor;".to_string()); // Replace other fills, like style tags
             let outstr = tag_regex.replace_all(tmp.as_ref(), "")
-                .replace("<?xml version=\"1.0\" encoding=\"UTF-8\"?>", "")
-                .replace("xmlns=\"http://www.w3.org/2000/svg\"", "")
-                .replace("xmlns:xlink=\"http://www.w3.org/1999/xlink\"", ""); // Remove styles unless they are inline
+                .replace("<?xml version=\"1.0\" encoding=\"UTF-8\"?>", ""); // Remove styles unless they are inline
             let outstr_nospace = space_regex.replace_all(outstr.as_str(), " ");
             output += "<defs>"; // Defs prevents rendering
             output += outstr_nospace.as_ref(); // These just cause errors, idk why the xml library includes them by default.
             output += "</defs>";
 
-            svg_cache.insert(img.src_svg.clone(), format!("{}", svg_cache.len()));
+            svg_cache.insert(img.src_svg.as_ref().clone(), format!("{}", svg_cache.len()));
         }
-        let svgid = svg_cache.get(&img.src_svg).unwrap();
-        output += format!("<use x=\"0\" y=\"0\" transform=\"translate({} {}) rotate({} {} {})\" width=\"{}\" height=\"{}\" color=\"rgb({},{},{})\" href=\"#{}\" />",
+        let svgid = svg_cache.get(img.src_svg.as_ref()).unwrap();
+        output += format!("<use x=\"0\" y=\"0\" transform=\"translate({} {}) rotate({:.03} {} {})\" width=\"{}\" height=\"{}\" color=\"rgb({},{},{})\" href=\"#{}\" />",
             img.center_x as i32 - (img.size as f32/2.0) as i32,
             img.center_y as i32 - (img.size as f32/2.0) as i32,
-            img.rotation * (180.0/PI),
+            img.rotation as f32 * (180.0/PI),
             img.size as f32/2.0,
             img.size as f32/2.0,
             img.size,
