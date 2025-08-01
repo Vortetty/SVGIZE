@@ -21,8 +21,8 @@ rsvg-convert is recommended to convert the svg to a png, inkscape dislikes the g
 
 todo:
 
--[x] Find and fix source of code deadlocks (turned out to be nested rayon calls)
--[x] Consecutive fails allowed setting to prevent going for an accuracy or number of images that is impossible to reach, 100 seems reasonable?
--[ ] Reuse elements instead of repeating them, these SVG sizes are getting out of control
--[ ] Add hd PNG output mode, maybe use resvg? though that imports a skia reimplementation... Would be better than what i have now where you have to manually convert
--[ ] Guide placement by error and thresholding
+- [x] Find and fix source of code deadlocks (turned out to be nested rayon calls)
+- [x] Consecutive fails allowed setting to prevent going for an accuracy or number of images that is impossible to reach, 100 seems reasonable?
+- [ ] Reuse elements instead of repeating them, these SVG sizes are getting out of control
+- [ ] Add hd PNG output mode, maybe use resvg? though that imports a skia reimplementation... Would be better than what i have now where you have to manually convert
+- [ ] Guide placement by error and thresholding
