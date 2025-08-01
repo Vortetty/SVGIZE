@@ -57,16 +57,24 @@ struct Args {
     output: Option<String>,
 
     /// Minumum number of shapes to place, depending on the image you may want more than default, set to 0 to disable
-    #[arg(short, long, default_value_t=2000)]
+    #[arg(short, long, default_value_t=500)]
     shapes: u32,
 
-    /// Minimum match percentage (0.0-100.0), if used with --shapes will stop only when both conditions are met, 100% is impossible and normally 25-50% match is enough. This will need some trial and error.
+    /// Minimum match percentage (0.0-100.0), if used with --shapes will stop only when both conditions are met, 100% is impossible and normally 25-50% match is enough. If set to 100% it will run until it fails the number of times specified by --failmax
     #[arg(short, long, value_parser=similarity_range)]
     matchscore: Option<f64>,
 
     /// Image width to use during comparison of image, larger images will be more similar at the cost of speed, smaller (even 256 or 512) will normally yield a fine result, that said larger images will allow more variation and thus accuracy
     #[arg(short, long, default_value_t=384)]
-    cmpwidth: u32
+    cmpwidth: u32,
+
+    /// Max number of failed iterations before the image is output as-is. This overrides cmpwidth and matchscore so it will need set very high to work
+    #[arg(short, long, default_value_t=100)]
+    failmax: u32,
+
+    /// Number of images to try in each iteration, more will be slower but choose more optimal images and have failed iterations less often
+    #[arg(short, long, default_value_t=16)]
+    imgcnt: u32,
 }
 
 fn main() {
@@ -85,7 +93,7 @@ fn main() {
     }
 
     let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(rand::random());
-    rayon::ThreadPoolBuilder::new().num_threads(24*4).build_global().unwrap();
+    //rayon::ThreadPoolBuilder::new().num_threads(num_cpus::get()).build_global().unwrap();
 
     println!("Loading source image...");
     let input_image = {
@@ -100,7 +108,7 @@ fn main() {
     println!("Loaded source image");
 
     println!("Loading fragment images...");
-    let mut images: Vec<FragmentImage> = WalkDir::new("images_png").into_iter().par_bridge().filter_map(|e| e.ok()).filter_map(|path| {
+    let images: Vec<FragmentImage> = WalkDir::new("images_png").into_iter().par_bridge().filter_map(|e| e.ok()).filter_map(|path| {
         if path.metadata().unwrap().is_file() {
             let im = ImageReader::open(path.path()).ok()?.decode().ok()?;
             println!("{}{}", "Loaded fragment image: ".italic().bright_black(), format!("{}", path.path().display()).italic().bright_black());
@@ -165,13 +173,13 @@ fn main() {
 
     let mut success = 0;
     let mut failure = 0;
+    let mut consec_fails = 0;
     let mut placed: Vec<ImageSetting> = vec![];
 
-    while curr_score < target_score || success < target_shapes {
-        let im_best_result = (0..16)
+    while (curr_score < target_score || success < target_shapes) && consec_fails < args.failmax {
+        let im_best_result = (0..args.imgcnt)
             .map(|_| gen_rand_im())
             .enumerate()
-            .par_bridge()
             .filter_map(
                 |pasteover| -> Option<(ImageObj, f64, usize)> {
                     let mut desttmp = dest_image.clone();
@@ -194,13 +202,15 @@ fn main() {
             //dest_image.save(format!("out/{:.06}.png", im.1)); // Disabled for production, good for debug tho
             placed.push(im.0.settings);
             success += 1;
+            consec_fails = 0;
             println!("Image success ({:.04}% > {:.04}%)", im.1*100.0, curr_score*100.0);
-            println!("{}/{} (placed/failed)", success.to_string().bright_green(), failure.to_string().bright_red());
+            println!("{}/{}/{}/{} (placed/failed/consecutive fails/score)", success.to_string().bright_green(), failure.to_string().bright_red(), consec_fails.to_string().bright_yellow(), format!("{:.04}", curr_score * 100.0).bright_magenta());
             continue;
         }
         failure += 1;
-        println!("16 images failed");
-        println!("{}/{} (placed/failed)", success.to_string().bright_green(), failure.to_string().bright_red());
+        consec_fails += 1;
+        println!("{} images failed", args.imgcnt);
+        println!("{}/{}/{}/{} (placed/failed/consecutive fails/score)", success.to_string().bright_green(), failure.to_string().bright_red(), consec_fails.to_string().bright_yellow(), format!("{:.04}", curr_score * 100.0).bright_magenta());
     }
 
     println!("Image finished!\nSaving... This may take a while");
