@@ -7,9 +7,10 @@ use std::{borrow::Cow, collections::HashMap, f32::consts::PI, fs::{self, File}, 
 
 use clap::Parser;
 use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
-use rand::prelude::*;
+use rand::{prelude::*, rngs::OsRng, TryRngCore};
 use image::{imageops::{self, resize, FilterType::{self, Lanczos3}}, ImageReader, Rgb, RgbImage, Rgba, RgbaImage};
 use colored::Colorize;
+use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::{prelude::*, ThreadPoolBuilder};
 use regex::Regex;
 use walkdir::WalkDir;
@@ -17,17 +18,16 @@ use xmltree::Element;
 
 struct FragmentImage {
     pub im: RgbaImage,
-    pub file: PathBuf,
     pub src_svg: PathBuf
 }
 
 struct ImageSetting<'a> { // the image pasted on and all the info abt it
-    rotation: f16, // 0.0-2pi
+    src_svg: Cow<'a, PathBuf>,
     size: u32, // Pixel width
-    color: [u8; 4], // Will substitute all pixels for this but preserve alpha of the original
     center_x: u32,
     center_y: u32,
-    src_svg: Cow<'a, PathBuf>
+    color: [u8; 3], // Will substitute all pixels for this but preserve alpha of the original
+    rotation: f16, // 0.0-2pi
 }
 struct ImageObj<'a> { // The image used
     im: RgbaImage,
@@ -92,7 +92,9 @@ fn main() {
         exit(0);
     }
 
-    let mut rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(rand::random());
+    let mut seed_bytes = [0u8; 32];
+    OsRng.try_fill_bytes(&mut seed_bytes);
+    let mut rng = Xoshiro256PlusPlus::from_seed(seed_bytes);
     //rayon::ThreadPoolBuilder::new().num_threads(num_cpus::get()).build_global().unwrap();
 
     println!("Loading source image...");
@@ -115,7 +117,6 @@ fn main() {
 
             Some(FragmentImage {
                 im: im.to_rgba8(),
-                file: path.path().to_path_buf(),
                 src_svg: {
                     let mut f = path.path().to_path_buf();
                     f.set_extension("svg");
@@ -142,7 +143,7 @@ fn main() {
         }
         let rand_rot = rng.next_u32() as f32 / u32::MAX as f32 * (PI*2.0);
 
-        let pos_color = input_image.get_pixel(rand_center_x, rand_center_y).0;
+        let pos_color = input_image.get_pixel(rand_center_x, rand_center_y);
         let paste_offset = (rand_size_rotated as f32/2.0).floor() as u32 - (rand_size as f32/2.0).floor() as u32;
         let src_resized = resize(&images[im_index].im, rand_size, rand_size, Lanczos3);
         let mut im_tmp = RgbaImage::from_pixel(rand_size_rotated, rand_size_rotated, Rgba([pos_color[0], pos_color[1], pos_color[2], 0]));
@@ -160,7 +161,7 @@ fn main() {
             settings: ImageSetting {
                 rotation: rand_rot as f16,
                 size: rand_size,
-                color: pos_color,
+                color: [pos_color[0], pos_color[1], pos_color[2]],
                 center_x: rand_center_x,
                 center_y: rand_center_y,
                 src_svg: Cow::Borrowed(&images[im_index].src_svg)
@@ -181,7 +182,7 @@ fn main() {
             .enumerate()
             .filter_map(
                 |pasteover| -> Option<(ImageObj, f64, usize)> {
-                    let mut desttmp = dest_image.clone();
+                    let mut desttmp = dest_image.clone(); // This stuff sucks man, can we fix it? YES WE CAN
                     imageops::overlay(&mut desttmp, &pasteover.1.im, pasteover.1.topleft_x_pos, pasteover.1.topleft_y_pos);
                     let newscore = (image_compare::rgba_blended_hybrid_compare((&input_image).into(), (&desttmp).into(), Rgb([avgcolor[0], avgcolor[1], avgcolor[2]])).unwrap().score * 1000000.0).floor() / 1000000.0;
 

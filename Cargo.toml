@@ -9,16 +9,37 @@ version = "1.1.0"
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.5.41", features = ["unicode", "default", "wrap_help", "color", "std", "derive"] }
+clap = { version = "4.5.41", features = [
+    "unicode",
+    "default",
+    "wrap_help",
+    "color",
+    "std",
+    "derive",
+] }
 colored = "3.0.0"
-image = { version = "0.25.6", features = ["rayon", "default-formats", "nasm"] }
+image = { version = "0.25.6", features = [
+    "rayon",
+    "nasm",
+    "jpeg",
+    "png",
+    "webp",
+    "avif",
+    "bmp",
+    "tiff",
+    "qoi",
+], default-features = false }
 image-compare = "0.4.2"
 imageproc = { version = "0.25.0", features = ["rayon"] }
 num_cpus = "1.17.0"
-rand = "0.9.2"
+rand = { version = "0.9.2", default-features = false, features = [
+    "std",
+    "simd_support",
+    "os_rng"
+] }
 rand_xoshiro = "0.7.0"
 rayon = "1.10.0"
-regex = "1.11.1"
+regex = { version = "1.11.1", features = ["unstable"] }
 walkdir = "2.5.0"
 xmltree = "0.11.0"
 

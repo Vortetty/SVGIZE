@@ -21,8 +21,9 @@ rsvg-convert is recommended to convert the svg to a png, inkscape dislikes the g
 
 todo:
 
-- [x] Find and fix source of code deadlocks (turned out to be nested rayon calls)
-- [x] Consecutive fails allowed setting to prevent going for an accuracy or number of images that is impossible to reach, 100 seems reasonable?
-- [ ] Reuse elements instead of repeating them, these SVG sizes are getting out of control
 - [ ] Add hd PNG output mode, maybe use resvg? though that imports a skia reimplementation... Would be better than what i have now where you have to manually convert
 - [ ] Guide placement by error and thresholding
+- [ ] ~~Implement a custom image class that allows passing an overlay image, to avoid the image copy needed for rayon~~ impossible, waiting on [this issue](https://github.com/ChrisRega/image-compare/issues/12) to see where to go
+- [x] Find and fix source of code deadlocks (turned out to be nested rayon calls)
+- [x] Consecutive fails allowed setting to prevent going for an accuracy or number of images that is impossible to reach, 100 seems reasonable?
+- [x] Reuse elements instead of repeating them, these SVG sizes are getting out of control
