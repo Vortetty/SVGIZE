@@ -217,7 +217,7 @@ fn main() {
     let mut output = format!("<svg viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"rgb({}, {}, {})\"/><clipPath id=\"clipView\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/></clipPath><g clip-path=\"url(#clipView)\">", input_image.width(), input_image.height(), avgcolor[0], avgcolor[1], avgcolor[2], input_image.width(), input_image.height());
     let mut svg_cache: HashMap<PathBuf, String> = HashMap::new();
     let style_prop_regex = Regex::new(r"(fill|color):.+?;").unwrap();
-    let tag_regex = Regex::new(r#"(?s)(<(style|metadata)\b[^>]*>.*?</(style|metadata)>|<\s*(metadata|g)\b[^>]*\/\s*>|class\s*=\s*"(.*?)"|xmlns(:\w+)?\s*=\s*"[^"]*"|xmlns(:\w+)?\s*=\s*'[^']*')"#).unwrap(); // All style, metadata, and empty g tags, as well as all class tags and xmlns tags
+    let tag_regex = Regex::new(r#"(?s)(<(style|metadata)\b[^>]*>.*?</(style|metadata)>|<\s*(metadata|g)\b[^>]*\/\s*>|(class|version)\s*=\s*"(.*?)"|(class|version)\s*=\s*'(.*?)'|xmlns(:\w+)?\s*=\s*"[^"]*"|xmlns(:\w+)?\s*=\s*'[^']*')"#).unwrap(); // All style, metadata, and empty g tags, as well as all class tags and xmlns tags
     let space_regex = Regex::new(r"\s+").unwrap();
     let none = "none".to_string();
     for img in placed {
@@ -245,7 +245,7 @@ fn main() {
             svg_cache.insert(img.src_svg.as_ref().clone(), format!("{}", svg_cache.len()));
         }
         let svgid = svg_cache.get(img.src_svg.as_ref()).unwrap();
-        output += format!("<use x=\"0\" y=\"0\" transform=\"translate({} {}) rotate({:.03} {} {})\" width=\"{}\" height=\"{}\" color=\"rgb({},{},{})\" href=\"#{}\" />",
+        output += format!("<use x=\"0\" y=\"0\" transform=\"translate({} {}) rotate({:.03} {} {})\" width=\"{}\" height=\"{}\" color=\"#{:06X}\" href=\"#{}\" />",
             img.center_x as i32 - (img.size as f32/2.0) as i32,
             img.center_y as i32 - (img.size as f32/2.0) as i32,
             img.rotation as f32 * (180.0/PI),
@@ -253,9 +253,7 @@ fn main() {
             img.size as f32/2.0,
             img.size,
             img.size,
-            img.color[0],
-            img.color[1],
-            img.color[2],
+            (img.color[0] as u32) << 16 | (img.color[1] as u32) << 8 | img.color[2] as u32,
             svgid
         ).as_str();
     }
