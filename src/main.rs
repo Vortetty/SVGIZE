@@ -164,7 +164,7 @@ fn similarity_range(s: &str) -> Result<f64, String> {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Input file
+    /// Input file, supported formats: .jpg, .jpeg, .jpe, .png, .webp, .avif, .bmp, .dib, .tiff, .tif, .qoi
     input: String,
 
     /// Output file, will output in the same folder by default. Should be an svg, if not an svg it will add the extension.
@@ -249,7 +249,12 @@ fn main() {
             None
         }
     }).collect();
-    println!("Loaded {} fragment images successfully", images.len());
+    if images.len() > 0 {
+        println!("Loaded {} fragment images successfully", images.len());
+    } else {
+        println!("Could not find any images in images_png, please run `gen_images_png.sh`");
+        exit(1);
+    }
 
     let mut gen_rand_im = || -> ImageObj {
         let im_index = rng.random_range(0..images.len()) as usize;
