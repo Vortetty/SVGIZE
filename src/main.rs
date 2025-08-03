@@ -18,7 +18,7 @@ use xmltree::Element;
 use image_compare::{utils::Decompose, yuv_hybrid_compare};
 
 struct FragmentImage {
-    pub im: RgbaImage,
+    pub im: GrayImage,
     pub src_svg: PathBuf
 }
 
@@ -82,27 +82,33 @@ impl<'a> ImageObj<'a> {
         let x_offset = 0.max(-x0);
         let y_offset = 0.max(-y0);
 
-        for x in 0..x_size {
-            for y in 0..y_size {
-                let x2 = (self.topleft_x_pos+x_offset+x) as u32;
-                let y2 = (self.topleft_y_pos+y_offset+y) as u32;
+        let [ref mut y_img, ref mut u_img, ref mut v_img] = *result;
+
+        let y_buf = y_img.as_flat_samples_mut().samples;
+        let u_buf = u_img.as_flat_samples_mut().samples;
+        let v_buf = v_img.as_flat_samples_mut().samples;
+        let alpha_buf = self.im.as_flat_samples().samples;
+        let base_x = (x0 + x_offset) as u32;
+        let base_y = (y0 + y_offset) as u32;
+
+        for y in 0..y_size {
+            let row = (base_y + y as u32) as usize * width as usize;
+            for x in 0..x_size {
+                let idx = row + (base_x + x as u32) as usize;
 
                 let blended = blend_yuv_yuva(
+                    (y_buf[idx], u_buf[idx], v_buf[idx]),
                     (
-                        result[0].get_pixel_mut(x2, y2)[0],
-                        result[1].get_pixel_mut(x2, y2)[0],
-                        result[2].get_pixel_mut(x2, y2)[0]
-                    ), (
                         self.settings.color[0],
                         self.settings.color[1],
                         self.settings.color[2],
-                        self.im.get_pixel((x_offset+x) as u32, (y_offset+y) as u32)[0]
+                        alpha_buf[(y_offset + y) as usize * x_size as usize + (x_offset + x) as usize],
                     )
                 );
 
-                result[0].get_pixel_mut(x2, y2)[0] = blended.0;
-                result[1].get_pixel_mut(x2, y2)[0] = blended.1;
-                result[2].get_pixel_mut(x2, y2)[0] = blended.2;
+                y_buf[idx] = blended.0;
+                u_buf[idx] = blended.1;
+                v_buf[idx] = blended.2;
             }
         }
     }
@@ -119,14 +125,27 @@ impl<'a> ImageObj<'a> {
         let x_offset = 0.max(-x0);
         let y_offset = 0.max(-y0);
 
-        for x in 0..x_size {
-            for y in 0..y_size {
-                let x2 = (self.topleft_x_pos+x_offset+x) as u32;
-                let y2 = (self.topleft_y_pos+y_offset+y) as u32;
+        let [ref y_img, ref u_img, ref v_img] = *source;
+        let y_in_buf = y_img.as_flat_samples().samples;
+        let u_in_buf = u_img.as_flat_samples().samples;
+        let v_in_buf = v_img.as_flat_samples().samples;
 
-                result[0].get_pixel_mut(x2, y2)[0] = source[0].get_pixel(x2, y2)[0];
-                result[1].get_pixel_mut(x2, y2)[0] = source[1].get_pixel(x2, y2)[0];
-                result[2].get_pixel_mut(x2, y2)[0] = source[2].get_pixel(x2, y2)[0];
+        let [ref mut y_img, ref mut u_img, ref mut v_img] = *result;
+        let y_out_buf = y_img.as_flat_samples_mut().samples;
+        let u_out_buf = u_img.as_flat_samples_mut().samples;
+        let v_out_buf = v_img.as_flat_samples_mut().samples;
+
+        let base_x = (x0 + x_offset) as u32;
+        let base_y = (y0 + y_offset) as u32;
+
+        for y in 0..y_size {
+            let row = (base_y + y as u32) as usize * width as usize;
+            for x in 0..x_size {
+                let idx = row + (base_x + x as u32) as usize;
+
+                y_out_buf[idx] = y_in_buf[idx];
+                u_out_buf[idx] = u_in_buf[idx];
+                v_out_buf[idx] = v_in_buf[idx];
             }
         }
     }
@@ -191,7 +210,6 @@ fn main() {
     let mut seed_bytes = [0u8; 32];
     OsRng.try_fill_bytes(&mut seed_bytes);
     let mut rng = Xoshiro256PlusPlus::from_seed(seed_bytes);
-    //rayon::ThreadPoolBuilder::new().num_threads(num_cpus::get()).build_global().unwrap();
 
     println!("Loading source image...");
     let input_image = {
@@ -220,7 +238,7 @@ fn main() {
             println!("{}{}", "Loaded fragment image: ".italic().bright_black(), format!("{}", path.path().display()).italic().bright_black());
 
             Some(FragmentImage {
-                im: im.to_rgba8(),
+                im: GrayImage::from_raw(im.width(), im.height(), im.as_flat_samples_u8().unwrap().samples.iter().skip(3).step_by(4).map(|x| x.clone()).collect()).unwrap(),
                 src_svg: {
                     let mut f = path.path().to_path_buf();
                     f.set_extension("svg");
@@ -251,9 +269,19 @@ fn main() {
         let src_resized = resize(&images[im_index].im, rand_size, rand_size, Lanczos3);
         let mut im_tmp = GrayImage::from_pixel(rand_size_rotated, rand_size_rotated, Luma([0]));
 
-        for x in 0..rand_size {
-            for y in 0..rand_size {
-                im_tmp.get_pixel_mut(x+paste_offset, y+paste_offset)[0] = src_resized.get_pixel(x, y)[3];
+        let dst_buf = im_tmp.as_flat_samples_mut().samples;
+        let src_buf = src_resized.as_flat_samples().samples;
+
+        let dst_width = rand_size_rotated as usize;
+        let src_width = rand_size as usize;
+        let offset = paste_offset as usize;
+
+        for y in 0..src_width {
+            let dst_row = (y + offset) * dst_width;
+            let src_row = y * src_width;
+
+            for x in 0..src_width {
+                dst_buf[dst_row + x + offset] = src_buf[src_row + x];
             }
         }
 
