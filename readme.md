@@ -49,15 +49,15 @@ git submodule update
 
 Next step depends on your OS
 
-**Windows:**
-
-You sadly don't have a script to do this right now, but make a copy of `images` called `images_png` and convert all of the SVGs to 512x512 PNGs in-place
-
 **Linux/Mac:**
 
 run `gen_images_png.sh`
 
 <sub>*This does use `rm`, `mkdir`, `find`, and `printf`. If these are for some reason not present on your system refer to the windows method.*</sub>
+
+**Windows/Others:**
+
+You sadly don't have a script to do this right now, but make a copy of `images` called `images_png` and convert all of the SVGs to 512x512 PNGs in-place
 
 Lastly, compile
 
