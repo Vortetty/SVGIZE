@@ -8,13 +8,14 @@ use std::{borrow::Cow, collections::HashMap, f32::consts::PI, fs, io::Cursor, pa
 use clap::Parser;
 use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
 use rand::{prelude::*, rngs::OsRng, TryRngCore};
-use image::{imageops::{self, resize, FilterType::{self, Lanczos3}}, ImageReader, Rgb, Rgba, RgbaImage};
+use image::{buffer::ConvertBuffer, imageops::{self, resize, FilterType::{self, Lanczos3}}, GrayImage, ImageReader, Luma, Rgb, RgbImage, Rgba, RgbaImage};
 use colored::Colorize;
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
 use regex::Regex;
 use walkdir::WalkDir;
 use xmltree::Element;
+use image_compare::{utils::Decompose, yuv_hybrid_compare};
 
 struct FragmentImage {
     pub im: RgbaImage,
@@ -30,10 +31,105 @@ struct ImageSetting<'a> { // the image pasted on and all the info abt it
     rotation: f16, // 0.0-2pi
 }
 struct ImageObj<'a> { // The image used
-    im: RgbaImage,
+    im: GrayImage, // All we actually need is alpha since we have settings.color
     topleft_x_pos: i64,
     topleft_y_pos: i64,
     settings: ImageSetting<'a>
+}
+
+fn blend_yuv_yuva(a: (u8, u8, u8), b: (u8, u8, u8, u8)) -> (u8, u8, u8) { // Blend a yuv pixel with a yuva pixel
+    let (ay, au, av) = a;
+    let (by, bu, bv, ba) = b;
+
+    let alpha = ba as f32 / 255.0;
+    let inverse_alpha = 1.0 - alpha;
+
+    let blend = |ac: u8, bc: u8| -> u8 {
+        ((bc as f32 * alpha) + (ac as f32 * inverse_alpha)).round().clamp(0.0, 255.0) as u8
+    };
+
+    (
+        blend(ay, by),
+        blend(au, bu),
+        blend(av, bv),
+    )
+}
+
+fn rgb_to_yuv(rgb: (u8, u8, u8)) -> (u8, u8, u8) {
+    let py = 0. + (0.299 * rgb.0 as f32) + (0.587 * rgb.1 as f32) + (0.114 * rgb.2 as f32);
+    let pu = 128. - (0.168736 * rgb.0 as f32) - (0.331264 * rgb.1 as f32) + (0.5 * rgb.2 as f32);
+    let pv = 128. + (0.5 * rgb.0 as f32) - (0.418688 * rgb.1 as f32) - (0.081312 * rgb.2 as f32);
+    (py as u8, pu as u8, pv as u8)
+}
+
+fn yuv_to_rgb(yuv: (u8, u8, u8)) -> (u8, u8, u8) {
+    let r = yuv.0 as f32 + (1.402 * (yuv.2 as f32 - 128.));
+    let g = yuv.0 as f32 - (0.344136 * (yuv.1 as f32 - 128.)) - (0.714136 * (yuv.2 as f32 - 128.));
+    let b = yuv.0 as f32 + (1.772 * (yuv.1 as f32 - 128.));
+    (r as u8, g as u8, b as u8)
+}
+
+impl<'a> ImageObj<'a> {
+    pub fn paste(&self, result: &mut [GrayImage; 3]) {
+        let size = self.settings.size as i64;
+        let x0 = self.topleft_x_pos;
+        let y0 = self.topleft_y_pos;
+        let width = result[0].width() as i64;
+        let height = result[0].height() as i64;
+
+        let x_size = (x0 + size).min(width).saturating_sub(x0.max(0));
+        let y_size = (y0 + size).min(height).saturating_sub(y0.max(0));
+        let x_offset = 0.max(-x0);
+        let y_offset = 0.max(-y0);
+
+        for x in 0..x_size {
+            for y in 0..y_size {
+                let x2 = (self.topleft_x_pos+x_offset+x) as u32;
+                let y2 = (self.topleft_y_pos+y_offset+y) as u32;
+
+                let blended = blend_yuv_yuva(
+                    (
+                        result[0].get_pixel_mut(x2, y2)[0],
+                        result[1].get_pixel_mut(x2, y2)[0],
+                        result[2].get_pixel_mut(x2, y2)[0]
+                    ), (
+                        self.settings.color[0],
+                        self.settings.color[1],
+                        self.settings.color[2],
+                        self.im.get_pixel((x_offset+x) as u32, (y_offset+y) as u32)[0]
+                    )
+                );
+
+                result[0].get_pixel_mut(x2, y2)[0] = blended.0;
+                result[1].get_pixel_mut(x2, y2)[0] = blended.1;
+                result[2].get_pixel_mut(x2, y2)[0] = blended.2;
+            }
+        }
+    }
+
+    pub fn restore(&self, source: &[GrayImage; 3], result: &mut [GrayImage; 3]) {
+        let size = self.settings.size as i64;
+        let x0 = self.topleft_x_pos;
+        let y0 = self.topleft_y_pos;
+        let width = result[0].width() as i64;
+        let height = result[0].height() as i64;
+
+        let x_size = (x0 + size).min(width).saturating_sub(x0.max(0));
+        let y_size = (y0 + size).min(height).saturating_sub(y0.max(0));
+        let x_offset = 0.max(-x0);
+        let y_offset = 0.max(-y0);
+
+        for x in 0..x_size {
+            for y in 0..y_size {
+                let x2 = (self.topleft_x_pos+x_offset+x) as u32;
+                let y2 = (self.topleft_y_pos+y_offset+y) as u32;
+
+                result[0].get_pixel_mut(x2, y2)[0] = source[0].get_pixel(x2, y2)[0];
+                result[1].get_pixel_mut(x2, y2)[0] = source[1].get_pixel(x2, y2)[0];
+                result[2].get_pixel_mut(x2, y2)[0] = source[2].get_pixel(x2, y2)[0];
+            }
+        }
+    }
 }
 
 fn similarity_range(s: &str) -> Result<f64, String> {
@@ -99,14 +195,22 @@ fn main() {
 
     println!("Loading source image...");
     let input_image = {
-        let im = ImageReader::open(source_image).unwrap().decode().unwrap().to_rgba8();
-        resize(&im, args.cmpwidth, (args.cmpwidth as f32/im.width() as f32*im.height() as f32) as u32, FilterType::Triangle)
-    };
+        let im = ImageReader::open(source_image.clone()).unwrap().decode().unwrap().to_rgba8();
+        resize(&im, args.cmpwidth, (args.cmpwidth as f32/im.width() as f32*im.height() as f32) as u32, FilterType::Triangle).convert() as RgbImage
+    }.split_to_yuv();
     let avgcolor = {
-        let tmp = resize(&input_image, 1, 1, FilterType::Triangle);
-        tmp.get_pixel(0, 0).clone()
-    }.0;
-    let mut dest_image = RgbaImage::from_pixel(input_image.width(), input_image.height(), Rgba([avgcolor[0], avgcolor[1], avgcolor[2], 255]));
+        let im = ImageReader::open(source_image.clone()).unwrap().decode().unwrap().to_rgba8();
+        let im1 = resize(&im, args.cmpwidth, (args.cmpwidth as f32/im.width() as f32*im.height() as f32) as u32, FilterType::Triangle).convert() as RgbImage;
+        let tmp = resize(&im1, 1, 1, FilterType::Triangle);
+        let rgb = tmp.get_pixel(0, 0);
+        rgb_to_yuv((rgb[0], rgb[1], rgb[2]))
+    };
+    let mut dest_image = [
+        GrayImage::from_pixel(input_image[0].width(),input_image[0].height(), Luma([avgcolor.0])),
+        GrayImage::from_pixel(input_image[1].width(),input_image[1].height(), Luma([avgcolor.1])),
+        GrayImage::from_pixel(input_image[2].width(),input_image[2].height(), Luma([avgcolor.2]))
+    ];
+    let mut desttmp = dest_image.clone(); // Clone once, we need desttmp for temporary edits and dest_image for the cache of all edits done so far.
     println!("Loaded source image");
 
     println!("Loading fragment images...");
@@ -131,9 +235,9 @@ fn main() {
 
     let mut gen_rand_im = || -> ImageObj {
         let im_index = rng.random_range(0..images.len()) as usize;
-        let rand_center_x = rng.random_range(0..input_image.width());
-        let rand_center_y = rng.random_range(0..input_image.height());
-        let mut rand_size = (0..4).map(|_| rng.random_range(0..input_image.width().max(input_image.height()))).min().unwrap();
+        let rand_center_x = rng.random_range(0..input_image[0].width());
+        let rand_center_y = rng.random_range(0..input_image[0].height());
+        let mut rand_size = (0..4).map(|_| rng.random_range(0..input_image[0].width().max(input_image[0].height()))).min().unwrap();
         if rand_size < 1 {
             rand_size += 1;
         }
@@ -143,25 +247,28 @@ fn main() {
         }
         let rand_rot = rng.next_u32() as f32 / u32::MAX as f32 * (PI*2.0);
 
-        let pos_color = input_image.get_pixel(rand_center_x, rand_center_y);
         let paste_offset = (rand_size_rotated as f32/2.0).floor() as u32 - (rand_size as f32/2.0).floor() as u32;
         let src_resized = resize(&images[im_index].im, rand_size, rand_size, Lanczos3);
-        let mut im_tmp = RgbaImage::from_pixel(rand_size_rotated, rand_size_rotated, Rgba([pos_color[0], pos_color[1], pos_color[2], 0]));
+        let mut im_tmp = GrayImage::from_pixel(rand_size_rotated, rand_size_rotated, Luma([0]));
 
         for x in 0..rand_size {
             for y in 0..rand_size {
-                im_tmp.get_pixel_mut(x+paste_offset, y+paste_offset)[3] = src_resized.get_pixel(x, y)[3];
+                im_tmp.get_pixel_mut(x+paste_offset, y+paste_offset)[0] = src_resized.get_pixel(x, y)[3];
             }
         }
 
         ImageObj {
-            im: rotate_about_center(&im_tmp, rand_rot, Interpolation::Bicubic, Rgba([pos_color[0], pos_color[1], pos_color[2], 0])),
+            im: rotate_about_center(&im_tmp, rand_rot, Interpolation::Bicubic, Luma([0])),
             topleft_x_pos: rand_center_x as i64 - (rand_size_rotated as f32/2.0).floor() as i64,
             topleft_y_pos: rand_center_y as i64 - (rand_size_rotated as f32/2.0).floor() as i64,
             settings: ImageSetting {
                 rotation: rand_rot as f16,
                 size: rand_size,
-                color: [pos_color[0], pos_color[1], pos_color[2]],
+                color: [
+                    input_image[0].get_pixel(rand_center_x, rand_center_y)[0],
+                    input_image[1].get_pixel(rand_center_x, rand_center_y)[0],
+                    input_image[2].get_pixel(rand_center_x, rand_center_y)[0]
+                ],
                 center_x: rand_center_x,
                 center_y: rand_center_y,
                 src_svg: Cow::Borrowed(&images[im_index].src_svg)
@@ -169,7 +276,7 @@ fn main() {
         }
     };
 
-    let mut curr_score = (image_compare::rgba_blended_hybrid_compare((&input_image).into(), (&dest_image).into(), Rgb([avgcolor[0], avgcolor[1], avgcolor[2]])).unwrap().score * 10000.0).floor() / 10000.0;
+    let mut curr_score = (yuv_hybrid_compare(&input_image, &dest_image).unwrap().score * 10000.0).floor() / 10000.0;
 
     let mut success = 0;
     let mut failure = 0;
@@ -182,9 +289,9 @@ fn main() {
             .enumerate()
             .filter_map(
                 |pasteover| -> Option<(ImageObj, f64, usize)> {
-                    let mut desttmp = dest_image.clone(); // This stuff sucks man, can we fix it? YES WE CAN
-                    imageops::overlay(&mut desttmp, &pasteover.1.im, pasteover.1.topleft_x_pos, pasteover.1.topleft_y_pos);
-                    let newscore = (image_compare::rgba_blended_hybrid_compare((&input_image).into(), (&desttmp).into(), Rgb([avgcolor[0], avgcolor[1], avgcolor[2]])).unwrap().score * 1000000.0).floor() / 1000000.0;
+                    pasteover.1.paste(&mut desttmp);
+                    let newscore = (yuv_hybrid_compare(&input_image, &desttmp).unwrap().score * 10000.0).floor() / 10000.0;
+                    pasteover.1.restore(&dest_image, &mut desttmp);
 
                     if newscore > curr_score {
                         Some((pasteover.1, newscore, pasteover.0))
@@ -198,7 +305,8 @@ fn main() {
         if im_best_result.is_some() {
             let im = im_best_result.unwrap();
             curr_score = im.1;
-            imageops::overlay(&mut dest_image, &im.0.im, im.0.topleft_x_pos, im.0.topleft_y_pos);
+            im.0.paste(&mut dest_image);
+            im.0.paste(&mut desttmp);
             //dest_image.save(format!("out/{:.06}.png", im.1)); // Disabled for production, good for debug tho
             placed.push(im.0.settings);
             success += 1;
@@ -214,10 +322,11 @@ fn main() {
     }
 
     println!("Image finished!\nSaving... This may take a while");
-    let mut output = format!("<svg viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"rgb({}, {}, {})\"/><clipPath id=\"clipView\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/></clipPath><g clip-path=\"url(#clipView)\">", input_image.width(), input_image.height(), avgcolor[0], avgcolor[1], avgcolor[2], input_image.width(), input_image.height());
+    let bg_color = yuv_to_rgb((avgcolor.0, avgcolor.1, avgcolor.2));
+    let mut output = format!("<svg viewBox=\"0 0 {} {}\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#{:06X}\"/><clipPath id=\"clipView\"><rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"/></clipPath><g clip-path=\"url(#clipView)\">", input_image[0].width(), input_image[0].height(), (bg_color.0 as u32) << 16 | (bg_color.1 as u32) << 8 | bg_color.2 as u32, input_image[0].width(), input_image[0].height());
     let mut svg_cache: HashMap<PathBuf, String> = HashMap::new();
     let style_prop_regex = Regex::new(r"(fill|color):.+?;").unwrap();
-    let tag_regex = Regex::new(r#"(?s)(<(style|metadata)\b[^>]*>.*?</(style|metadata)>|<\s*(metadata|g)\b[^>]*\/\s*>|(class|version)\s*=\s*"(.*?)"|(class|version)\s*=\s*'(.*?)'|xmlns(:\w+)?\s*=\s*"[^"]*"|xmlns(:\w+)?\s*=\s*'[^']*')"#).unwrap(); // All style, metadata, and empty g tags, as well as all class tags and xmlns tags
+    let tag_regex = Regex::new(r#"(?s)(<(style|metadata)\b[^>]*>.*?</(style|metadata)>|<\s*(metadata|g)\b[^>]*\/\s*>|(class|version)\s*=\s*"(.*?)"|(class|version)\s*=\s*'(.*?)'|xmlns(:\w+)?\s*=\s*"[^"]*"|xmlns(:\w+)?\s*=\s*'[^']*'|<\?xml\b[^?]*\?>)"#).unwrap(); // All style, metadata, and empty g tags, as well as all class tags and xmlns tags and xml declarations
     let space_regex = Regex::new(r"\s+").unwrap();
     let none = "none".to_string();
     for img in placed {
@@ -235,9 +344,8 @@ fn main() {
             svg.write(&mut buffer);
             let svgtext = String::from_utf8(buffer.into_inner()).unwrap();
             let tmp = style_prop_regex.replace_all(svgtext.as_ref(), "fill:currentColor;".to_string()); // Replace other fills, like style tags
-            let outstr = tag_regex.replace_all(tmp.as_ref(), "")
-                .replace("<?xml version=\"1.0\" encoding=\"UTF-8\"?>", ""); // Remove styles unless they are inline
-            let outstr_nospace = space_regex.replace_all(outstr.as_str(), " ");
+            let outstr = tag_regex.replace_all(tmp.as_ref(), ""); // Remove styles unless they are inline
+            let outstr_nospace = space_regex.replace_all(outstr.as_ref(), " ");
             output += "<defs>"; // Defs prevents rendering
             output += outstr_nospace.as_ref(); // These just cause errors, idk why the xml library includes them by default.
             output += "</defs>";
@@ -245,6 +353,7 @@ fn main() {
             svg_cache.insert(img.src_svg.as_ref().clone(), format!("{}", svg_cache.len()));
         }
         let svgid = svg_cache.get(img.src_svg.as_ref()).unwrap();
+        let color = yuv_to_rgb((img.color[0], img.color[1], img.color[2]));
         output += format!("<use x=\"0\" y=\"0\" transform=\"translate({} {}) rotate({:.03} {} {})\" width=\"{}\" height=\"{}\" color=\"#{:06X}\" href=\"#{}\" />",
             img.center_x as i32 - (img.size as f32/2.0) as i32,
             img.center_y as i32 - (img.size as f32/2.0) as i32,
@@ -253,12 +362,11 @@ fn main() {
             img.size as f32/2.0,
             img.size,
             img.size,
-            (img.color[0] as u32) << 16 | (img.color[1] as u32) << 8 | img.color[2] as u32,
+            (color.0 as u32) << 16 | (color.1 as u32) << 8 | color.2 as u32,
             svgid
         ).as_str();
     }
     output += "</g></svg>";
 
     fs::write(outfile.clone(), output);
-    dest_image.save(outfile + ".png");
 }
