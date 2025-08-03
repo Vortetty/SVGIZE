@@ -164,7 +164,7 @@ fn similarity_range(s: &str) -> Result<f64, String> {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Input file, supported formats: .jpg, .jpeg, .jpe, .png, .webp, .avif, .bmp, .dib, .tiff, .tif, .qoi
+    /// Input file, supported formats: .jpg, .jpeg, .jpe, .png, .webp, .avif, .bmp, .tiff, .tif, .qoi
     input: String,
 
     /// Output file, will output in the same folder by default. Should be an svg, if not an svg it will add the extension.
