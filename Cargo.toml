@@ -29,13 +29,13 @@ image = { version = "0.25.6", features = [
     "tiff",
     "qoi",
 ], default-features = false }
-image-compare = "0.4.2"
+image-compare = { version = "0.4.2", path = "image-compare-exposed", features = ["advanced_functions"] }
 imageproc = { version = "0.25.0", features = ["rayon"] }
 num_cpus = "1.17.0"
 rand = { version = "0.9.2", default-features = false, features = [
     "std",
     "simd_support",
-    "os_rng"
+    "os_rng",
 ] }
 rand_xoshiro = "0.7.0"
 rayon = "1.10.0"

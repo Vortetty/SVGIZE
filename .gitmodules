@@ -1,0 +1,3 @@
+[submodule "image-compare-exposed"]
+	path = image-compare-exposed
+	url = https://github.com/Vortetty/image-compare-exposed

@@ -3,15 +3,15 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 #![feature(f16)]
 
-use std::{borrow::Cow, collections::HashMap, f32::consts::PI, fs::{self, File}, io::Cursor, path::{Path, PathBuf}, process::exit, u32};
+use std::{borrow::Cow, collections::HashMap, f32::consts::PI, fs, io::Cursor, path::{Path, PathBuf}, process::exit, u32};
 
 use clap::Parser;
 use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
 use rand::{prelude::*, rngs::OsRng, TryRngCore};
-use image::{imageops::{self, resize, FilterType::{self, Lanczos3}}, ImageReader, Rgb, RgbImage, Rgba, RgbaImage};
+use image::{imageops::{self, resize, FilterType::{self, Lanczos3}}, ImageReader, Rgb, Rgba, RgbaImage};
 use colored::Colorize;
 use rand_xoshiro::Xoshiro256PlusPlus;
-use rayon::{prelude::*, ThreadPoolBuilder};
+use rayon::prelude::*;
 use regex::Regex;
 use walkdir::WalkDir;
 use xmltree::Element;
