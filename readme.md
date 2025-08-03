@@ -4,8 +4,8 @@ An image filter
 
 |Before | After|
 |-------|------|
-|![An image of a street in japan at night](/test_images/japanese_street_1.jpg) | ![An image of a street in japan at night](/results/japanese_street_1.png)|
-|![An image of a sky rat](/test_images/ratbird_shot.png) | ![An image of a sky rat](/results/skyrat.png)|
+|![An image of a street in japan at night](/test_images/japanese_street_1.jpg | width=1024) | ![An image of a street in japan at night](/results/japanese_street_1.png | width=1024)|
+|![An image of a sky rat](/test_images/ratbird_shot.png | width=1024) | ![An image of a sky rat](/results/skyrat.png | width=1024)|
 
 <sub>The image of the street in japan is licensed under [Creative Commons Attribution 2.0 Generic](https://creativecommons.org/licenses/by/2.0/deed.en) originally posted to [Flickr on March 27, 2013 at 9:58:19 AM PDT by whitefield_d](https://flickr.com/photos/49968453@N02/8594761813)</sub>
 
