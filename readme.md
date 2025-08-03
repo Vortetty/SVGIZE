@@ -79,7 +79,7 @@ or refer to below:
 Usage: image_evo_filter [OPTIONS] <INPUT>
 
 Arguments:
-  <INPUT>  Input file, supported formats: .jpg, .jpeg, .jpe, .png, .webp, .avif, .bmp, .dib, .tiff, .tif, .qoi
+  <INPUT>  Input file, supported formats: .jpg, .jpeg, .jpe, .png, .webp, .avif, .bmp, .tiff, .tif, .qoi
 
 Options:
   -o, --output <OUTPUT>          Output file, will output in the same folder by default. Should be an svg, if not an svg it will add the extension
